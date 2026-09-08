@@ -15,7 +15,6 @@ import (
 // DetectCompiler analyzes the raw bytes to determine the source language/compiler
 // by looking for un-strippable ABI bindings, imports, and exports.
 func DetectCompiler(data []byte) string {
-	// 1. WASI (WebAssembly System Interface) - Cannot be stripped
 	if bytes.Contains(data, []byte("wasi_snapshot_preview1")) || bytes.Contains(data, []byte("wasi_unstable")) {
 		if bytes.Contains(data, []byte("rust_panic")) || bytes.Contains(data, []byte("__rust_")) {
 			return "Rust (WASI)"
@@ -26,7 +25,6 @@ func DetectCompiler(data []byte) string {
 		return "C/C++ (WASI)"
 	}
 
-	// 2. Rust specific ABI and Bindgen - Cannot be stripped
 	if bytes.Contains(data, []byte("__wbindgen_")) || bytes.Contains(data, []byte("__wbg_")) {
 		return "Rust (wasm-bindgen)"
 	}
@@ -34,20 +32,16 @@ func DetectCompiler(data []byte) string {
 		return "Rust"
 	}
 
-	// 3. Emscripten and C/C++ - Looks for JS interop functions and C++ mangled names
-	// "invoke_ii", "invoke_vi" etc., are heavily used by Emscripten for exception handling
 	if bytes.Contains(data, []byte("emscripten_resize_heap")) || bytes.Contains(data, []byte("emscripten_notify_memory_growth")) {
 		return "C/C++ (Emscripten)"
 	}
 	if bytes.Contains(data, []byte("invoke_ii")) || bytes.Contains(data, []byte("invoke_vi")) || bytes.Contains(data, []byte("invoke_iiii")) {
 		return "C/C++ (Emscripten)"
 	}
-	// Look for C++ standard library mangled names (_ZSt = std::)
 	if bytes.Contains(data, []byte("_ZSt")) || bytes.Contains(data, []byte("_ZNSt")) {
 		return "C/C++ (Emscripten)"
 	}
 
-	// 4. Standard Go & TinyGo - Cannot be stripped due to runtime requirements
 	if bytes.Contains(data, []byte("runtime.wasmExit")) || bytes.Contains(data, []byte("runtime.gopanic")) || bytes.Contains(data, []byte("Go build ID")) {
 		return "Go"
 	}
@@ -55,17 +49,14 @@ func DetectCompiler(data []byte) string {
 		return "TinyGo"
 	}
 
-	// 5. .NET / Blazor
 	if bytes.Contains(data, []byte("mono_wasm_")) || bytes.Contains(data, []byte("dotnet")) || bytes.Contains(data, []byte("System.Private.CoreLib")) {
 		return ".NET/Blazor"
 	}
 
-	// 6. AssemblyScript
 	if bytes.Contains(data, []byte("~lib/rt/")) || bytes.Contains(data, []byte("~lib/string/")) || bytes.Contains(data, []byte("~lib/memory/")) {
 		return "AssemblyScript"
 	}
 
-	// 7. Other specific languages
 	if bytes.Contains(data, []byte("SwiftRuntime")) || bytes.Contains(data, []byte("swift_panic")) {
 		return "Swift"
 	}
@@ -73,26 +64,12 @@ func DetectCompiler(data []byte) string {
 		return "Kotlin"
 	}
 
-	// 8. Specific popular C/C++ Libraries (Fallback for heavily stripped libs)
-	if bytes.Contains(data, []byte("sqlite3_")) {
-		return "C/C++ (SQLite)"
-	}
-	if bytes.Contains(data, []byte("draco_")) {
-		return "C/C++ (Draco)"
-	}
-	if bytes.Contains(data, []byte("TessBaseAPI")) || bytes.Contains(data, []byte("tesseract_")) {
-		return "C/C++ (Tesseract)"
-	}
-	if bytes.Contains(data, []byte("avcodec_")) || bytes.Contains(data, []byte("avformat_")) || bytes.Contains(data, []byte("ffmpeg_")) {
-		return "C/C++ (FFmpeg)"
-	}
-	if bytes.Contains(data, []byte("ort_")) || bytes.Contains(data, []byte("onnx_")) {
-		return "C/C++ (ONNX Runtime)"
+	if bytes.Contains(data, []byte("sqlite3_")) || bytes.Contains(data, []byte("draco_")) || bytes.Contains(data, []byte("TessBaseAPI")) || bytes.Contains(data, []byte("tesseract_")) || bytes.Contains(data, []byte("avcodec_")) || bytes.Contains(data, []byte("avformat_")) || bytes.Contains(data, []byte("ffmpeg_")) || bytes.Contains(data, []byte("ort_")) || bytes.Contains(data, []byte("onnx_")) {
+		return "C/C++"
 	}
 
-	// 9. Generic C/C++ Fallback (Memory allocators mapped to JS env)
-	if bytes.Contains(data, []byte("_malloc")) && bytes.Contains(data, []byte("_free")) && bytes.Contains(data, []byte("env")) {
-		return "C/C++ (Generic)"
+	if bytes.Contains(data, []byte("_malloc")) && bytes.Contains(data, []byte("_free")) {
+		return "C/C++"
 	}
 
 	return "Unknown"
