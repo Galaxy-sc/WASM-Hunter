@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-
 	"wasm-hunter/internal/models"
 )
 
@@ -61,12 +60,16 @@ func PrintHexDump(segments []models.DataSegment, targetOffset int64, matchLen in
 }
 
 // ProcessFindings marshals and writes the filtered findings securely to the output target
-func ProcessFindings(filename string, findings map[string][]string, compiler string, outputPath string) {
+func ProcessFindings(filename string, findings map[string][]string, compiler string, detectMode bool, outputPath string) {
 	record := map[string]interface{}{
 		"target_file": filename,
-		"compiler":    compiler,
 		"findings":    findings,
 	}
+
+	if detectMode {
+		record["compiler"] = compiler
+	}
+
 	jsonData, err := json.Marshal(record)
 	if err != nil {
 		return

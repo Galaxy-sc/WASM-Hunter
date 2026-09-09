@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
 	"wasm-hunter/internal/config"
 	"wasm-hunter/internal/parser"
 	"wasm-hunter/internal/reporter"
@@ -18,11 +17,9 @@ func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, detectMode 
 	defer wg.Done()
 	for filePath := range files {
 		rawStrings, segments, compiler, _ := parser.ParseWasmDataSections(filePath, 5)
-
 		if len(rawStrings) == 0 {
 			continue
 		}
-
 		findings := make(map[string]map[string]bool)
 
 		// Regex matching loop across all extracted strings
@@ -129,7 +126,7 @@ func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, detectMode 
 					cleanFindings[cat] = append(cleanFindings[cat], item)
 				}
 			}
-			reporter.ProcessFindings(filepath.Base(filePath), cleanFindings, compiler, outputPath)
+			reporter.ProcessFindings(filepath.Base(filePath), cleanFindings, compiler, detectMode, outputPath)
 		}
 	}
 }
