@@ -1,0 +1,8 @@
+test/rust_lab/target/**
+
+!test/rust_lab/target/**/
+
+!test/rust_lab/target/wasm32-unknown-unknown/release/*.wasm
+
+**/*.rs.bk
+*.pdb
