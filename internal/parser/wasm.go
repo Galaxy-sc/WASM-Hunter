@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -12,8 +13,6 @@ import (
 	"wasm-hunter/internal/utils"
 )
 
-// DetectCompiler analyzes the raw bytes to determine the source language/compiler
-// by looking for un-strippable ABI bindings, imports, and exports.
 func DetectCompiler(data []byte) string {
 	if bytes.Contains(data, []byte("wasi_snapshot_preview1")) || bytes.Contains(data, []byte("wasi_unstable")) {
 		if bytes.Contains(data, []byte("rust_panic")) || bytes.Contains(data, []byte("__rust_")) {
@@ -75,7 +74,6 @@ func DetectCompiler(data []byte) string {
 	return "Unknown"
 }
 
-// IsAddressInSegments checks if a given memory address falls within the boundaries of known memory segments
 func IsAddressInSegments(addr int64, segments []models.DataSegment) bool {
 	for _, seg := range segments {
 		if addr >= seg.MemoryOffset && addr < seg.MemoryOffset+int64(len(seg.Data)) {
@@ -85,7 +83,6 @@ func IsAddressInSegments(addr int64, segments []models.DataSegment) bool {
 	return false
 }
 
-// ExtractPrintableWithOffset extracts printable strings from byte sequences and records their offsets
 func ExtractPrintableWithOffset(data []byte, baseOffset int64, minLen int) []models.ExtractedString {
 	var res []models.ExtractedString
 	var current strings.Builder
@@ -111,7 +108,6 @@ func ExtractPrintableWithOffset(data []byte, baseOffset int64, minLen int) []mod
 	return res
 }
 
-// ParseWasmDataSections identifies all memory pointers and splits memory segments to uncover hidden strings
 func ParseWasmDataSections(filePath string, minLength int) ([]models.ExtractedString, []models.DataSegment, string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -246,18 +242,37 @@ func ParseWasmDataSections(filePath string, minLength int) ([]models.ExtractedSt
 		}
 	}
 
-	if compiler == "Go" {
+	// -------------------------------------------------------------
+	// OPTIMIZATION 1: Bounding Box for Memory Segments
+	// -------------------------------------------------------------
+	var minAddr int64 = math.MaxInt64
+	var maxAddr int64 = -1
+	for _, seg := range dataSegments {
+		if seg.MemoryOffset < minAddr {
+			minAddr = seg.MemoryOffset
+		}
+		endOffset := seg.MemoryOffset + int64(len(seg.Data))
+		if endOffset > maxAddr {
+			maxAddr = endOffset
+		}
+	}
+
+	// Go string heuristic parsing
+	if compiler == "Go" || compiler == "Unknown" {
 		for _, seg := range dataSegments {
 			if len(seg.Data) < 16 {
 				continue
 			}
 			for i := 0; i <= len(seg.Data)-16; i += 8 {
-				addr := binary.LittleEndian.Uint64(seg.Data[i : i+8])
+				addr := int64(binary.LittleEndian.Uint64(seg.Data[i : i+8]))
 				length := binary.LittleEndian.Uint64(seg.Data[i+8 : i+16])
 
-				if IsAddressInSegments(int64(addr), dataSegments) && length > 1 && length < 5000 {
-					pointers = append(pointers, int64(addr))
-					pointers = append(pointers, int64(addr)+int64(length))
+				// Fast-Fail check against bounding box before doing the heavy O(S) loop
+				if length > 1 && length < 5000 && addr >= minAddr && addr <= maxAddr {
+					if IsAddressInSegments(addr, dataSegments) {
+						pointers = append(pointers, addr)
+						pointers = append(pointers, addr+int64(length))
+					}
 				}
 			}
 		}
@@ -269,6 +284,7 @@ func ParseWasmDataSections(filePath string, minLength int) ([]models.ExtractedSt
 	}
 
 	sort.Slice(pointers, func(i, j int) bool { return pointers[i] < pointers[j] })
+	
 	var uniquePointers []int64
 	var last int64 = -1
 	for _, p := range pointers {
@@ -282,20 +298,33 @@ func ParseWasmDataSections(filePath string, minLength int) ([]models.ExtractedSt
 	seen := make(map[string]bool)
 
 	for _, seg := range dataSegments {
+		segStart := seg.MemoryOffset
+		segEnd := seg.MemoryOffset + int64(len(seg.Data))
+
+		// -------------------------------------------------------------
+		// OPTIMIZATION 2: Binary Search instead of full loop
+		// -------------------------------------------------------------
+		startIdx := sort.Search(len(uniquePointers), func(i int) bool {
+			return uniquePointers[i] >= segStart
+		})
+
 		var segPtrs []int64
-		for _, p := range uniquePointers {
-			if p >= seg.MemoryOffset && p <= seg.MemoryOffset+int64(len(seg.Data)) {
-				segPtrs = append(segPtrs, p)
+		for i := startIdx; i < len(uniquePointers); i++ {
+			p := uniquePointers[i]
+			if p > segEnd {
+				break // Stop searching once we pass the current segment
 			}
+			segPtrs = append(segPtrs, p)
 		}
 
+		// Iterate over sliced segments to extract clean strings
 		for i := 0; i < len(segPtrs)-1; i++ {
-			start := segPtrs[i] - seg.MemoryOffset
-			end := segPtrs[i+1] - seg.MemoryOffset
+			start := segPtrs[i] - segStart
+			end := segPtrs[i+1] - segStart
 
 			if end-start >= int64(minLength) && end <= int64(len(seg.Data)) {
 				chunk := seg.Data[start:end]
-				cleanStrings := ExtractPrintableWithOffset(chunk, seg.MemoryOffset+start, minLength)
+				cleanStrings := ExtractPrintableWithOffset(chunk, segStart+start, minLength)
 				for _, s := range cleanStrings {
 					if !seen[s.Text] {
 						stringsList = append(stringsList, s)
