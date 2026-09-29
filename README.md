@@ -24,7 +24,7 @@ You can compile the tool directly using Go:
 ```bash
 git clone https://github.com/Galaxy-sc/WASM-Hunter.git
 cd WASM-Hunter
-go build -o wasm-hunter main.go
+go build -o wasm-hunter .\cmd\wasm-hunter\main.go
 ```
 
 ## Usage
@@ -33,6 +33,10 @@ WASM-Hunter operates as a standalone CLI tool. You can feed it a single `.wasm` 
 
 ```bash
 Usage of wasm-hunter:
+  -debug
+        Enable hex dump and memory debugging
+  -detect
+        Print the detected compiler language for the target WASM file(s)
   -i string
         Target .wasm file or directory containing .wasm files (Required)
   -o string
