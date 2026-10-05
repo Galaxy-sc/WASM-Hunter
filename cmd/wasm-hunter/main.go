@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"wasm-hunter/internal/parser"
-	"wasm-hunter/internal/reporter"
-	"wasm-hunter/internal/scanner"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/parser"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/reporter"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/scanner"
 )
 
 // Helper function to download WASM from a URL
