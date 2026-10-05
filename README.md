@@ -19,26 +19,34 @@ WASM-Hunter avoids decompiling the execution logic. Instead, it utilizes a custo
 
 ## Installation
 
-You can compile the tool directly using Go:
+**Method 1: Using Go (Recommended)**
+If you have Go installed, you can easily download and install WASM-Hunter globally:
+
+```bash
+go install github.com/Galaxy-sc/WASM-Hunter/cmd/wasm-hunter@latest
+```
+
+**Method 2: Build from Source**
+You can also clone the repository and compile the tool directly:
 
 ```bash
 git clone https://github.com/Galaxy-sc/WASM-Hunter.git
 cd WASM-Hunter
-go build -o wasm-hunter ./cmd/wasm-hunter/main.go
+go build ./cmd/wasm-hunter/main.go
 ```
 
 ## Usage
 
-WASM-Hunter operates as a standalone CLI tool. You can feed it a single `.wasm` file or an entire directory containing thousands of files.
+WASM-Hunter operates as a standalone CLI tool. You can feed it a single `.wasm` file, a direct URL, a directory containing thousands of files, or a `.txt` list of targets.
 
 ```bash
 Usage of wasm-hunter:
+  -compiler
+        Only identify and print the compiler used for the WASM file(s)
   -debug
         Enable hex dump and memory debugging
-  -detect
-        Print the detected compiler language for the target WASM file(s)
   -i string
-        Target .wasm file or directory containing .wasm files (Required)
+        Target .wasm file, directory, URL, or .txt list of targets (Required)
   -o string
         Output JSONL file (Optional. Prints to stdout if omitted)
   -w int
@@ -47,22 +55,33 @@ Usage of wasm-hunter:
 
 ### Examples
 
-**1. Scan a single file and output to terminal:**
+**1. Scan a single local file:**
 ```bash
-./wasm-hunter -i target_module.wasm
+wasm-hunter -i target_module.wasm
 ```
 
-**2. Scan a directory of extracted WASM files with 8 workers:**
+**2. Scan a direct URL (automatically downloads, scans, and cleans up):**
 ```bash
-./wasm-hunter -i /path/to/extracted_wasms -o results.jsonl -w 8
+wasm-hunter -i https://example.com/app.wasm
+```
+
+**3. Bulk scan using a text file (mixed URLs and local paths):**
+```bash
+wasm-hunter -i urls.txt -o results.jsonl -w 12
+```
+
+**4. Fast-Path Compiler Identification (skips deep extraction):**
+```bash
+wasm-hunter -i target_module.wasm -compiler
 ```
 
 ### Output Format
-The tool generates clean JSON Lines (`.jsonl`), making it perfect for piping into `jq` or integrating into your automated reconnaissance pipelines.
+The tool generates clean JSON Lines (`.jsonl`), ensuring consistent audit logs for every scanned file (including the detected compiler). It is perfect for piping into `jq` or integrating into your automated reconnaissance pipelines.
 
 ```json
 {
   "target_file": "app_core.wasm",
+  "compiler": "Rust",
   "findings": {
     "Absolute URL": [
       "https://securitymgmt.staging.unifiedapis.example.com",
