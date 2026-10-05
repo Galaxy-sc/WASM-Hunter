@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"wasm-hunter/internal/models"
-	"wasm-hunter/internal/utils"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/models"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/utils"
 )
 
 func DetectCompiler(data []byte) string {

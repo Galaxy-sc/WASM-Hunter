@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"wasm-hunter/internal/models"
+
+	"github.com/Galaxy-sc/WASM-Hunter/internal/models"
 )
 
 var fileMutex sync.Mutex

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 	
-	"wasm-hunter/internal/config"
-	"wasm-hunter/internal/parser"
-	"wasm-hunter/internal/reporter"
-	"wasm-hunter/internal/utils"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/config"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/parser"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/reporter"
+	"github.com/Galaxy-sc/WASM-Hunter/internal/utils"
 )
 
 // Worker handles concurrent individual file processing lifecycle
