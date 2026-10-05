@@ -63,11 +63,8 @@ func PrintHexDump(segments []models.DataSegment, targetOffset int64, matchLen in
 func ProcessFindings(filename string, findings map[string][]string, compiler string, detectMode bool, outputPath string) {
 	record := map[string]interface{}{
 		"target_file": filename,
+		"compiler":    compiler,
 		"findings":    findings,
-	}
-
-	if detectMode {
-		record["compiler"] = compiler
 	}
 
 	jsonData, err := json.Marshal(record)

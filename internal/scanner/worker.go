@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	
 	"wasm-hunter/internal/config"
 	"wasm-hunter/internal/parser"
 	"wasm-hunter/internal/reporter"
@@ -13,13 +14,16 @@ import (
 )
 
 // Worker handles concurrent individual file processing lifecycle
-func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, detectMode bool, outputPath string) {
+func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, outputPath string) {
 	defer wg.Done()
 	for filePath := range files {
 		rawStrings, segments, compiler, _ := parser.ParseWasmDataSections(filePath, 5)
+		
 		if len(rawStrings) == 0 {
+			reporter.ProcessFindings(filepath.Base(filePath), make(map[string][]string), compiler, false, outputPath)
 			continue
 		}
+		
 		findings := make(map[string]map[string]bool)
 
 		// Regex matching loop across all extracted strings
@@ -118,15 +122,13 @@ func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, detectMode 
 			}
 		}
 
-		// Export results if there are findings OR if detect mode is active
-		if len(findings) > 0 || detectMode {
-			cleanFindings := make(map[string][]string)
-			for cat, items := range findings {
-				for item := range items {
-					cleanFindings[cat] = append(cleanFindings[cat], item)
-				}
+		cleanFindings := make(map[string][]string)
+		for cat, items := range findings {
+			for item := range items {
+				cleanFindings[cat] = append(cleanFindings[cat], item)
 			}
-			reporter.ProcessFindings(filepath.Base(filePath), cleanFindings, compiler, detectMode, outputPath)
 		}
+		
+		reporter.ProcessFindings(filepath.Base(filePath), cleanFindings, compiler, false, outputPath)
 	}
 }
