@@ -67,10 +67,12 @@ func main() {
 	workersPtr := flag.Int("w", 12, "Number of concurrent workers")
 	debugPtr := flag.Bool("debug", false, "Enable hex dump and memory debugging")
 	compilerOnlyPtr := flag.Bool("compiler", false, "Only identify and print the compiler used for the WASM file(s)")
+	funcsOnlyPtr := flag.Bool("funcs-only", false, "Extract only function names (imports, exports, hidden) and skip secret scanning")
 
 	flag.Parse()
 	debugMode := *debugPtr
 	compilerOnly := *compilerOnlyPtr
+	funcsOnly := *funcsOnlyPtr
 	target := *targetPtr
 	outputPath := *outPtr
 
@@ -182,7 +184,7 @@ func main() {
 
 	for i := 0; i < *workersPtr; i++ {
 		wg.Add(1)
-		go scanner.Worker(filesChan, &wg, debugMode, outputPath)
+		go scanner.Worker(filesChan, &wg, debugMode, funcsOnly, outputPath)
 	}
 	for _, file := range filesToScan {
 		filesChan <- file
