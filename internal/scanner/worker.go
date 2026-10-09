@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	
+
 	"github.com/Galaxy-sc/WASM-Hunter/internal/config"
 	"github.com/Galaxy-sc/WASM-Hunter/internal/parser"
 	"github.com/Galaxy-sc/WASM-Hunter/internal/reporter"
@@ -18,13 +18,41 @@ func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, outputPath 
 	defer wg.Done()
 	for filePath := range files {
 		rawStrings, segments, compiler, _ := parser.ParseWasmDataSections(filePath, 5)
-		
+
 		if len(rawStrings) == 0 {
 			reporter.ProcessFindings(filepath.Base(filePath), make(map[string][]string), compiler, false, outputPath)
 			continue
 		}
-		
+
 		findings := make(map[string]map[string]bool)
+
+		// Extract hidden Go functions if the compiler is detected as Go
+		if compiler == "Go" {
+			hiddenFuncs := parser.ExtractGoFunctions(rawStrings)
+			if len(hiddenFuncs) > 0 {
+				findings["Go Hidden Functions"] = make(map[string]bool)
+				for _, fn := range hiddenFuncs {
+					findings["Go Hidden Functions"][fn] = true
+				}
+			}
+		} else {
+			// Extract Standard Imports/Exports for Rust, C/C++, Zig, AssemblyScript, etc.
+			stdSymbols, err := parser.ExtractStandardWasmFunctions(filePath)
+			if err == nil {
+				if len(stdSymbols.Exports) > 0 {
+					findings["Wasm Exported Functions"] = make(map[string]bool)
+					for _, fn := range stdSymbols.Exports {
+						findings["Wasm Exported Functions"][fn] = true
+					}
+				}
+				if len(stdSymbols.Imports) > 0 {
+					findings["Wasm Imported Functions"] = make(map[string]bool)
+					for _, fn := range stdSymbols.Imports {
+						findings["Wasm Imported Functions"][fn] = true
+					}
+				}
+			}
+		}
 
 		// Regex matching loop across all extracted strings
 		for _, item := range rawStrings {
@@ -128,7 +156,7 @@ func Worker(files <-chan string, wg *sync.WaitGroup, debugMode bool, outputPath 
 				cleanFindings[cat] = append(cleanFindings[cat], item)
 			}
 		}
-		
+
 		reporter.ProcessFindings(filepath.Base(filePath), cleanFindings, compiler, false, outputPath)
 	}
 }
