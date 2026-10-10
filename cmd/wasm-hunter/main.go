@@ -17,9 +17,10 @@ import (
 	"github.com/Galaxy-sc/WASM-Hunter/internal/scanner"
 )
 
-// Helper function to download WASM from a URL
-func downloadWasm(targetUrl string) (string, string, error) {
-	fmt.Printf("[*] Downloading WASM from URL: %s\n", targetUrl)
+func downloadWasm(targetUrl string, verbose bool) (string, string, error) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[*] Downloading WASM from URL: %s\n", targetUrl)
+	}
 	resp, err := http.Get(targetUrl)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download: %v", err)
@@ -66,23 +67,27 @@ func main() {
 	outPtr := flag.String("o", "", "Output JSONL file (Optional)")
 	workersPtr := flag.Int("w", 12, "Number of concurrent workers")
 	debugPtr := flag.Bool("debug", false, "Enable hex dump and memory debugging")
-	compilerOnlyPtr := flag.Bool("compiler", false, "Only identify and print the compiler used for the WASM file(s)")
-	funcsOnlyPtr := flag.Bool("funcs-only", false, "Extract only function names (imports, exports, hidden) and skip secret scanning")
+	compilerOnlyPtr := flag.Bool("compiler", false, "Include the compiler used for the WASM file(s) in output")
+	funcsOnlyPtr := flag.Bool("funcs-only", false, "Include function names (imports, exports, hidden) in output")
+	dataOnlyPtr := flag.Bool("data-only", false, "Include secrets, IPs, and URLs in output")
+	verbosePtr := flag.Bool("v", false, "Verbose mode: print progress and informational logs")
 
 	flag.Parse()
 	debugMode := *debugPtr
-	compilerOnly := *compilerOnlyPtr
-	funcsOnly := *funcsOnlyPtr
+	compFlag := *compilerOnlyPtr
+	funcsFlag := *funcsOnlyPtr
+	dataFlag := *dataOnlyPtr
+	verbose := *verbosePtr
 	target := *targetPtr
 	outputPath := *outPtr
 
 	if target == "" {
-		fmt.Println("WASM-Hunter: Attack Surface Mapping for WebAssembly")
+		fmt.Fprintf(os.Stderr, "WASM-Hunter: Attack Surface Mapping for WebAssembly\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	if outputPath != "" && !compilerOnly {
+	if outputPath != "" && !(compFlag && !funcsFlag && !dataFlag) {
 		os.WriteFile(outputPath, []byte(""), 0644)
 	}
 
@@ -95,38 +100,35 @@ func main() {
 		}
 	}()
 
-	// 1. Check if target is a direct URL
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		tmpFilePath, tmpDir, err := downloadWasm(target)
+		tmpFilePath, tmpDir, err := downloadWasm(target, verbose)
 		if err != nil {
-			fmt.Printf("[-] %v\n", err)
+			fmt.Fprintf(os.Stderr, "[-] %v\n", err)
 			return
 		}
 		tempDirs = append(tempDirs, tmpDir)
 		filesToScan = append(filesToScan, tmpFilePath)
-
-	// 2. Check if target is a .txt file containing a list of URLs/paths
 	} else if strings.HasSuffix(strings.ToLower(target), ".txt") {
 		file, err := os.Open(target)
 		if err != nil {
-			fmt.Printf("[-] Failed to open list file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[-] Failed to open list file: %v\n", err)
 			return
 		}
 		defer file.Close()
 
-		fmt.Printf("[*] Reading targets from list: %s\n", target)
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[*] Reading targets from list: %s\n", target)
+		}
+		
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			// Skip empty lines or comments starting with #
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
+			if line == "" || strings.HasPrefix(line, "#") { continue }
 
 			if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
-				tmpFilePath, tmpDir, err := downloadWasm(line)
+				tmpFilePath, tmpDir, err := downloadWasm(line, verbose)
 				if err != nil {
-					fmt.Printf("[-] Skipping %s: %v\n", line, err)
+					fmt.Fprintf(os.Stderr, "[-] Skipping %s: %v\n", line, err)
 					continue
 				}
 				tempDirs = append(tempDirs, tmpDir)
@@ -136,16 +138,14 @@ func main() {
 				if err == nil && !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".wasm") {
 					filesToScan = append(filesToScan, line)
 				} else {
-					fmt.Printf("[-] Skipping invalid local target in list: %s\n", line)
+					fmt.Fprintf(os.Stderr, "[-] Skipping invalid local target in list: %s\n", line)
 				}
 			}
 		}
-
-	// 3. Existing local file/directory logic
 	} else {
 		info, err := os.Stat(target)
 		if err != nil {
-			fmt.Printf("[-] Target not found: %s\n", target)
+			fmt.Fprintf(os.Stderr, "[-] Target not found: %s\n", target)
 			return
 		}
 
@@ -162,18 +162,16 @@ func main() {
 	}
 
 	if len(filesToScan) == 0 {
-		fmt.Println("[-] No valid .wasm targets found to scan.")
+		fmt.Fprintf(os.Stderr, "[-] No valid .wasm targets found to scan.\n")
 		return
 	}
 
-	// FAST PATH: If the flag is set, identify the compiler and output as standard JSONL
-	if compilerOnly {
+	if compFlag && !funcsFlag && !dataFlag {
 		for _, file := range filesToScan {
 			data, err := os.ReadFile(file)
 			if err == nil {
 				compiler := parser.DetectCompiler(data)
-				emptyFindings := make(map[string][]string)
-				reporter.ProcessFindings(filepath.Base(file), emptyFindings, compiler, false, outputPath)
+				reporter.ProcessFindings(filepath.Base(file), nil, nil, compiler, compFlag, funcsFlag, dataFlag, outputPath)
 			}
 		}
 		return
@@ -184,7 +182,7 @@ func main() {
 
 	for i := 0; i < *workersPtr; i++ {
 		wg.Add(1)
-		go scanner.Worker(filesChan, &wg, debugMode, funcsOnly, outputPath)
+		go scanner.Worker(filesChan, &wg, debugMode, compFlag, funcsFlag, dataFlag, outputPath)
 	}
 	for _, file := range filesToScan {
 		filesChan <- file

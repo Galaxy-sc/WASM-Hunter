@@ -25,6 +25,7 @@ var noiseKeywords = []string{
 	"vendor/", "golang.org/", "mSpan", "cTrigger", "markBits", 
 	"go.shape", "go1.", "Value.", "HTTP/", "ternal/", "al/", "nal/", 
 	"untime", "ntime", "me.", "e.", "i.", "jL.", "wRo.", "7ik.", "LG.", "_.", "ason.",
+	"mheap", "ps/", "l/runtime", "MapIter", "mspan", "eq.", "ime.",
 }
 
 // ExtractGoFunctions extracts Go function names using heuristics directly from the pre-extracted raw strings

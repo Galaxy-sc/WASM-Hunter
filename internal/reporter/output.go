@@ -11,21 +11,15 @@ import (
 
 var fileMutex sync.Mutex
 
-// PrintHexDump renders a visual memory hex dump to facilitate manual debugging and auditing
 func PrintHexDump(segments []models.DataSegment, targetOffset int64, matchLen int) {
 	fmt.Printf("\n[DEBUG MEMORY DUMP] Match found at Offset: %d (0x%X)\n", targetOffset, targetOffset)
 	for _, seg := range segments {
 		if targetOffset >= seg.MemoryOffset && targetOffset < seg.MemoryOffset+int64(len(seg.Data)) {
 			localOffset := targetOffset - seg.MemoryOffset
 			start := localOffset - 20
-			if start < 0 {
-				start = 0
-			}
+			if start < 0 { start = 0 }
 			end := localOffset + int64(matchLen) + 20
-			if end > int64(len(seg.Data)) {
-				end = int64(len(seg.Data))
-			}
-
+			if end > int64(len(seg.Data)) { end = int64(len(seg.Data)) }
 			fmt.Printf("Memory Segment Base: %d (0x%X)\n", seg.MemoryOffset, seg.MemoryOffset)
 			fmt.Println("-------------------------------------------------------------------------")
 			for i := start; i < end; i += 16 {
@@ -38,7 +32,7 @@ func PrintHexDump(segments []models.DataSegment, targetOffset int64, matchLen in
 							fmt.Printf(" %02X ", seg.Data[i+j])
 						}
 					} else {
-						fmt.Print("    ")
+						fmt.Print("   ")
 					}
 				}
 				fmt.Print(" | ")
@@ -60,12 +54,25 @@ func PrintHexDump(segments []models.DataSegment, targetOffset int64, matchLen in
 	}
 }
 
-// ProcessFindings marshals and writes the filtered findings securely to the output target
-func ProcessFindings(filename string, findings map[string][]string, compiler string, detectMode bool, outputPath string) {
-	record := map[string]interface{}{
-		"target_file": filename,
-		"compiler":    compiler,
-		"findings":    findings,
+// ProcessFindings dynamically builds the JSON based on exactly which flags the user passed
+func ProcessFindings(filename string, functions map[string][]string, indicators map[string][]string, compiler string, compFlag, funcsFlag, dataFlag bool, outputPath string) {
+	record := make(map[string]interface{})
+	record["target_file"] = filename
+
+	if !compFlag && !funcsFlag && !dataFlag {
+		record["compiler"] = compiler
+		if len(functions) > 0 { record["functions"] = functions }
+		if len(indicators) > 0 { record["indicators"] = indicators }
+	} else {
+		if compFlag {
+			record["compiler"] = compiler
+		}
+		if funcsFlag && len(functions) > 0 {
+			record["functions"] = functions
+		}
+		if dataFlag && len(indicators) > 0 {
+			record["indicators"] = indicators
+		}
 	}
 
 	jsonData, err := json.Marshal(record)
