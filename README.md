@@ -2,53 +2,59 @@
 
 WASM-Hunter is a high-performance, zero-dependency static analysis tool designed specifically for Attack Surface Mapping (ASM) of WebAssembly (`.wasm`) binaries. 
 
-As more organizations compile their sensitive logic, cryptographic routines, and enterprise integrations into WebAssembly, `.wasm` files have become a significant blind spot in modern web security. WASM-Hunter natively parses WebAssembly binaries to extract hidden endpoints, internal IPs, and hardcoded secrets without the overhead or false positives associated with traditional secret scanners.
+As more organizations compile their sensitive logic, cryptographic routines, and enterprise integrations into WebAssembly, `.wasm` files have become a significant blind spot in modern web security. WASM-Hunter natively parses WebAssembly binaries to extract exposed/hidden functions, internal API endpoints, and hardcoded secrets without the overhead or false positives associated with traditional secret scanners.
 
 ## The Problem with Traditional Scanners
 Standard secret scanners and binary analysis tools typically fail when analyzing WebAssembly files due to:
-1. **Memory Limits & Overhead:** General-purpose secret scanners often treat `.wasm` files as raw monolithic binaries, frequently crashing (OOM) or hitting string-read caps (e.g., 64MB limits).
-2. **Binary Hallucinations (False Positives):** Extracting raw strings from `.wasm` files yields massive amounts of garbage data and compiled framework artifacts (like C++ or .NET namespaces), which regular regex engines misinterpret as valid tokens or endpoints.
-3. **Dependency Hell:** Relying on external decompilers (like WABT) via OS-level processes introduces severe bottlenecks when scanning thousands of files simultaneously.
+1. **Memory Limits & Overhead:** General-purpose secret scanners often treat `.wasm` files as raw monolithic binaries, frequently crashing (OOM) or hitting string-read caps.
+2. **Architecture Blindness:** Traditional tools cannot parse WASM linear memory or bypass internal fragmentation (like Go's `pclntab`), leaving business logic and internal endpoints completely hidden.
+3. **Binary Hallucinations (False Positives):** Extracting raw strings from `.wasm` files yields massive amounts of garbage data and compiler glue code, which regular regex engines misinterpret as valid tokens.
 
 ## The WASM-Hunter Solution
-WASM-Hunter avoids decompiling the execution logic. Instead, it utilizes a custom, lightweight LEB128 parser written in pure Go to surgically extract the **Data Section (11)** and **Export Section (7)** of the WebAssembly binary.
+WASM-Hunter avoids decompiling the execution logic. Instead, it utilizes a custom, lightweight LEB128 parser written in pure Go to surgically extract the **Import Section (2)**, **Export Section (7)**, and **Data Section (11)** of the WebAssembly binary.
 
-* **Zero-Dependency:** Written in pure Go. No need to install `wasm-tools`, `wabt`, or any external parsers.
-* **Blazing Fast:** Designed with concurrent workers. It can parse and extract high-fidelity intelligence from thousands of `.wasm` files in seconds.
-* **High Precision:** Implements Shannon Entropy checks, IP validation (ignoring local/broadcast addresses), and framework noise-reduction filters to eliminate binary hallucinations.
+- **Polyglot Function Extraction:** Maps the attack surface by extracting standard W3C Imports/Exports for C/C++ and Rust, while using advanced heuristics to recover hidden internal functions in Go-compiled binaries.
+- **Zero-Dependency:** Written in pure Go. No need to install external decompilers like `wasm-tools` or `wabt`.
+- **High Precision:** Implements strict compiler artifact filtering (WASI, Emscripten, wasm-bindgen), Shannon Entropy checks, and IP validation to eliminate binary hallucinations.
+- **CI/CD Ready:** Outputs clean, modular JSON lines (`stdout`) while routing informational logs to `stderr`, making it perfect for pipeline integrations.
 
 ## Installation
 
 **Method 1: Using Go (Recommended)**
 If you have Go installed, you can easily download and install WASM-Hunter globally:
 
-```bash
-go install github.com/Galaxy-sc/WASM-Hunter/cmd/wasm-hunter@latest
+```sh
+go install https://github.com/Galaxy-sc/WASM-Hunter/cmd/wasm-hunter@latest
 ```
 
 **Method 2: Build from Source**
 You can also clone the repository and compile the tool directly:
 
-```bash
+```sh
 git clone https://github.com/Galaxy-sc/WASM-Hunter.git
 cd WASM-Hunter
-go build ./cmd/wasm-hunter/main.go
+go build -ldflags="-s -w" -o wasm-hunter ./cmd/wasm-hunter/main.go
 ```
 
 ## Usage
 
 WASM-Hunter operates as a standalone CLI tool. You can feed it a single `.wasm` file, a direct URL, a directory containing thousands of files, or a `.txt` list of targets.
 
-```bash
+```sh
 Usage of wasm-hunter:
   -compiler
-        Only identify and print the compiler used for the WASM file(s)
+        Include the compiler used for the WASM file(s) in output
+  -data-only
+        Extract only secrets, IPs, and URLs (skip functions)
   -debug
         Enable hex dump and memory debugging
+  -funcs-only
+        Extract only function names (imports, exports, hidden) and skip secrets
   -i string
         Target .wasm file, directory, URL, or .txt list of targets (Required)
   -o string
         Output JSONL file (Optional. Prints to stdout if omitted)
+  -v    Verbose mode: print progress and informational logs to stderr
   -w int
         Number of concurrent workers (default 12)
 ```
@@ -56,55 +62,64 @@ Usage of wasm-hunter:
 ### Examples
 
 **1. Scan a single local file:**
-```bash
+```sh
 wasm-hunter -i target_module.wasm
 ```
 
-**2. Scan a direct URL (automatically downloads, scans, and cleans up):**
-```bash
-wasm-hunter -i https://example.com/app.wasm
+**2. Fast-Path Architecture Mapping (Functions only):**
+```sh
+wasm-hunter -i target_module.wasm -funcs-only
 ```
 
-**3. Bulk scan using a text file (mixed URLs and local paths):**
-```bash
-wasm-hunter -i urls.txt -o results.jsonl -w 12
+**3. Scan a direct URL with verbose logging:**
+```sh
+wasm-hunter -i https://example.com/app.wasm -v
 ```
 
-**4. Fast-Path Compiler Identification (skips deep extraction):**
-```bash
-wasm-hunter -i target_module.wasm -compiler
+**4. Bulk scan for secrets using a text file (mixed URLs and local paths):**
+```sh
+wasm-hunter -i urls.txt -o results.jsonl -w 12 -data-only
 ```
 
 ### Output Format
-The tool generates clean JSON Lines (`.jsonl`), ensuring consistent audit logs for every scanned file (including the detected compiler). It is perfect for piping into `jq` or integrating into your automated reconnaissance pipelines.
+The tool generates clean, modular JSON Lines (`.jsonl`). It distinctly separates the architectural attack surface (`functions`) from data exposures (`indicators`), ensuring perfect compatibility with automated DevSecOps pipelines like `jq`.
 
 ```json
 {
-  "target_file": "app_core.wasm",
-  "compiler": "Rust",
-  "findings": {
+  "target_file": "test_nested.wasm",
+  "compiler": "Go",
+  "functions": {
+    "Go Hidden Functions": [
+      "main.invokeSecureActionWrapper",
+      "wasm-target/internal/auth.VerifyAdminPrivileges",
+      "wasm-target/internal/core.ExecuteAdminAction",
+      "wasm-target/internal/api.DispatchSecurePayload"
+    ]
+  },
+  "indicators": {
+    "AWS Access Key": [
+      "AKIAIOSFODNN7EXAMPLE"
+    ],
     "Absolute URL": [
-      "https://securitymgmt.staging.unifiedapis.example.com",
-      "https://qa.auth.api.example.com/auth/v1/jwt"
+      "https://api.internal.corp"
     ],
     "Relative API Endpoint": [
-      "/v1/jwt",
-      "/v1/jwthttps"
+      "/v1/action"
     ],
-    "IPv4 Address": [
-      "52.5.4.72",
-      "4.32.5.4"
+    "JWT Token": [
+      "eyJhbGciOiJIUzI1NiIsInR5..."
     ]
   }
 }
 ```
 
 ## Extracted Data Categories
-WASM-Hunter currently targets and extracts the following assets for Attack Surface Mapping:
-* **Infrastructure Mapping:** Absolute URLs, Relative API Endpoints, Public IPv4 Addresses.
-* **Hardcoded Credentials:** AWS Keys, GCP API Keys, Stripe Keys, Slack Tokens, Discord Tokens, Telegram Bot Tokens, GitHub Personal Access Tokens.
-* **Database URIs:** MongoDB, PostgreSQL, Redis connection strings.
-* **Cryptographic Assets:** JWT Tokens, Private Keys (RSA/EC/SSH).
+WASM-Hunter targets and extracts the following assets for comprehensive Attack Surface Mapping:
+- **Architectural Mapping:** Wasm Exported Functions, Wasm Imported Functions, and Go Hidden Functions.
+- **Infrastructure Mapping:** Absolute URLs, Relative API Endpoints, Public IPv4 Addresses.
+- **Hardcoded Credentials:** AWS Keys, GCP API Keys, Stripe Keys, Slack Tokens, Discord Tokens, Telegram Bot Tokens, GitHub Personal Access Tokens.
+- **Database URIs:** MongoDB, PostgreSQL, Redis connection strings.
+- **Cryptographic Assets:** JWT Tokens, Private Keys (RSA/EC/SSH).
 
 ## License
 This project is licensed under the Apache License 2.0.
